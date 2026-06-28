@@ -16,6 +16,8 @@ swift run BrightnessControlApp
 open ".build/release/Brightness Control.app"
 ```
 
+The build script embeds `Resources/AppIcon.icns` into the generated app bundle.
+
 ## Behavior
 
 - Internal display brightness uses Apple's `DisplayServices` API for writes.

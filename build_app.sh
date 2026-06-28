@@ -13,6 +13,7 @@ swift build -c release --product "$EXECUTABLE_NAME"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$EXECUTABLE_NAME" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
+cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 chmod +x "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
@@ -27,6 +28,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>$EXECUTABLE_NAME</string>
   <key>CFBundleIdentifier</key>
   <string>local.wty.BrightnessControl</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
