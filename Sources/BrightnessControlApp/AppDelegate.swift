@@ -89,11 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("BrightnessControlApp configuring main window")
         let rootView = DetailWindowView()
             .environmentObject(appState)
-            .frame(minWidth: 560, minHeight: 420)
+            .frame(minWidth: 620, minHeight: 480)
         let hostingView = NSHostingView(rootView: rootView)
 
         mainWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
