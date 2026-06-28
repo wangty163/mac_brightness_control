@@ -441,22 +441,34 @@ func testDisplayManagerExternalPrivacyModePowersOffExternalDisplays() throws {
     )
 }
 
-func testMenuPanelSizingUsesCompactHeightForTwoDisplays() throws {
-    try expect(MenuPanelSizing.width == 360, "compact menu width")
+func testMenuPanelSizingUsesModernHeightForTwoDisplays() throws {
+    try expect(MenuPanelSizing.width == 380, "modern menu width")
     try expect(
-        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 332,
-        "two-display menu height"
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 388,
+        "modern two-display menu height"
     )
 }
 
-func testMenuPanelSizingBoundsLoadingAndManyDisplayStates() throws {
+func testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates() throws {
     try expect(
-        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 252,
-        "loading menu height"
+        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 274,
+        "modern loading menu height"
     )
     try expect(
-        MenuPanelSizing.height(displayCount: 5, isLoading: false, hasError: true) == 420,
-        "many-display menu height cap"
+        MenuPanelSizing.height(displayCount: 5, isLoading: false, hasError: true) == 520,
+        "modern many-display menu height cap"
+    )
+}
+
+func testModernMenuSizing() throws {
+    try expect(MenuPanelSizing.width == 380.0, "modern menu width")
+    try expect(
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 388.0,
+        "modern menu height for two displays"
+    )
+    try expect(
+        MenuPanelSizing.height(displayCount: 4, isLoading: false, hasError: true) == 520.0,
+        "modern menu height remains bounded"
     )
 }
 
@@ -527,8 +539,9 @@ let tests: [(String, () throws -> Void)] = [
     ("display manager privacy restore", testDisplayManagerRestoresPrivacyModeSnapshot),
     ("display manager privacy enforce", testDisplayManagerEnforcesPrivacyModeFromSnapshotWithoutReloadingDisplays),
     ("display manager external privacy power off", testDisplayManagerExternalPrivacyModePowersOffExternalDisplays),
-    ("compact menu sizing for two displays", testMenuPanelSizingUsesCompactHeightForTwoDisplays),
-    ("bounded menu sizing states", testMenuPanelSizingBoundsLoadingAndManyDisplayStates)
+    ("modern menu sizing for two displays", testMenuPanelSizingUsesModernHeightForTwoDisplays),
+    ("bounded modern menu sizing states", testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates),
+    ("modern menu sizing", testModernMenuSizing)
 ]
 
 var failures: [String] = []
