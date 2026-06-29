@@ -50,7 +50,7 @@ struct MenuBarPanelView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(width: MenuPanelSizing.width, height: menuHeight, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.clear)
     }
 
     private var menuHeight: CGFloat {

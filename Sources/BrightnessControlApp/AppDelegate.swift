@@ -122,6 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showMainWindow()
             }.environmentObject(appState)
         )
+        menuView.wantsLayer = true
+        menuView.layer?.backgroundColor = NSColor.clear.cgColor
+        menuView.layer?.isOpaque = false
         self.menuView = menuView
         updateMenuViewFrame()
 
