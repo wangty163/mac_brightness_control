@@ -444,18 +444,18 @@ func testDisplayManagerExternalPrivacyModePowersOffExternalDisplays() throws {
 func testMenuPanelSizingUsesModernHeightForTwoDisplays() throws {
     try expect(MenuPanelSizing.width == 380, "modern menu width")
     try expect(
-        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 388,
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 422,
         "modern two-display menu height"
     )
 }
 
 func testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates() throws {
     try expect(
-        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 274,
+        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 304,
         "modern loading menu height"
     )
     try expect(
-        MenuPanelSizing.height(displayCount: 5, isLoading: false, hasError: true) == 520,
+        MenuPanelSizing.height(displayCount: 5, isLoading: false, hasError: true) == 540,
         "modern many-display menu height cap"
     )
 }
@@ -463,12 +463,25 @@ func testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates() throws {
 func testModernMenuSizing() throws {
     try expect(MenuPanelSizing.width == 380.0, "modern menu width")
     try expect(
-        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 388.0,
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 422.0,
         "modern menu height for two displays"
     )
     try expect(
-        MenuPanelSizing.height(displayCount: 4, isLoading: false, hasError: true) == 520.0,
+        MenuPanelSizing.height(displayCount: 4, isLoading: false, hasError: true) == 540.0,
         "modern menu height remains bounded"
+    )
+}
+
+func testMenuPanelSizingDoesNotJumpWhenErrorAppears() throws {
+    try expect(
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: true)
+            == MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false),
+        "error row should not change menu height"
+    )
+    try expect(
+        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: true)
+            == MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false),
+        "loading error should not change menu height"
     )
 }
 
@@ -541,7 +554,8 @@ let tests: [(String, () throws -> Void)] = [
     ("display manager external privacy power off", testDisplayManagerExternalPrivacyModePowersOffExternalDisplays),
     ("modern menu sizing for two displays", testMenuPanelSizingUsesModernHeightForTwoDisplays),
     ("bounded modern menu sizing states", testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates),
-    ("modern menu sizing", testModernMenuSizing)
+    ("modern menu sizing", testModernMenuSizing),
+    ("menu sizing does not jump when error appears", testMenuPanelSizingDoesNotJumpWhenErrorAppears)
 ]
 
 var failures: [String] = []

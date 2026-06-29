@@ -23,9 +23,7 @@ struct MenuBarPanelView: View {
             ExternalConnectionControls(compact: true)
                 .environmentObject(appState)
 
-            if let errorMessage = appState.errorMessage {
-                ErrorMessageView(message: errorMessage, compact: true)
-            }
+            MenuErrorSlot(message: appState.errorMessage)
 
             Divider()
 
@@ -51,8 +49,16 @@ struct MenuBarPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(width: MenuPanelSizing.width)
+        .frame(width: MenuPanelSizing.width, height: menuHeight, alignment: .topLeading)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var menuHeight: CGFloat {
+        MenuPanelSizing.height(
+            displayCount: appState.displays.count,
+            isLoading: appState.isRefreshing,
+            hasError: appState.errorMessage != nil
+        )
     }
 
     private var header: some View {
@@ -553,8 +559,24 @@ private struct ErrorMessageView: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(compact ? .caption : .callout)
                 .foregroundStyle(.red)
-                .lineLimit(compact ? 3 : 2)
+                .lineLimit(2)
         }
+    }
+}
+
+private struct MenuErrorSlot: View {
+    let message: String?
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            if let message {
+                ErrorMessageView(message: message, compact: true)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(height: 42)
+        .accessibilityHidden(message == nil)
     }
 }
 
