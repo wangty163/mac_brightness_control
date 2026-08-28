@@ -1,5 +1,6 @@
 import AppKit
 import BrightnessControlCore
+import Combine
 import SwiftUI
 
 @MainActor
@@ -9,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var menuView: NSView!
+    private var menuSizingObservation: AnyCancellable?
     private var notificationObservers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        appState?.shutdown()
         for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -127,6 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuView.layer?.isOpaque = false
         self.menuView = menuView
         updateMenuViewFrame()
+        menuSizingObservation = appState.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                self?.updateMenuViewFrame()
+            }
+        }
 
         let panelItem = NSMenuItem()
         panelItem.view = menuView
@@ -139,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuViewFrame() {
+        guard menuView != nil else { return }
         let size = NSSize(
             width: MenuPanelSizing.width,
             height: MenuPanelSizing.height(
@@ -147,7 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 hasError: appState.errorMessage != nil
             )
         )
-        menuView.frame = NSRect(origin: .zero, size: size)
+        if menuView.frame.size != size {
+            menuView.frame = NSRect(origin: .zero, size: size)
+        }
     }
 
     private func showMainWindow() {

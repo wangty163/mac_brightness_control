@@ -47,6 +47,22 @@ func testParsesInternalAndExternalDisplaysFromSystemProfilerJSON() throws {
     try expect(displays[1].resolution == "3840 x 2160 @ 60.00Hz", "external resolution")
 }
 
+func testParsesGPUWithoutConnectedDisplays() throws {
+    let json = """
+    {
+      "SPDisplaysDataType": [
+        {
+          "_name": "Apple M3 Pro",
+          "spdisplays_metal": "spdisplays_supported"
+        }
+      ]
+    }
+    """
+
+    let displays = try SystemProfilerParser.parseDisplays(from: json)
+    try expect(displays.isEmpty, "missing display list should mean no connected displays")
+}
+
 func testParsesDisplayServicesBrightnessByDisplayID() throws {
     let text = """
         Display =             {
@@ -162,6 +178,30 @@ func testExternalPowerControllerFactoryPrefersM1DDC() throws {
     )
 }
 
+func testExternalPowerControllerFallsBackAfterM1DDCFailure() throws {
+    let primary = RecordingExternalPowerController(
+        name: "m1ddc",
+        failure: BrightnessError.commandFailed(
+            command: ["m1ddc"],
+            exitCode: 1,
+            stderr: "no display"
+        )
+    )
+    let fallback = RecordingExternalPowerController(name: "DDC power")
+    let controller = FallbackExternalPowerController(primary: primary, fallback: fallback)
+
+    try controller.setPowerMode(displayIndex: 1, mode: .off)
+
+    try expect(
+        primary.setCommands == [ExternalPowerCommand(displayIndex: 1, mode: .off)],
+        "primary power command"
+    )
+    try expect(
+        fallback.setCommands == [ExternalPowerCommand(displayIndex: 1, mode: .off)],
+        "fallback power command"
+    )
+}
+
 func testDDCCTLBackendParsesCurrentValueAndBuildsSetCommand() throws {
     let runner = RecordingCommandRunner(results: [
         CommandResult(exitCode: 0, stdout: "current value = 63, max value = 100\n", stderr: "")
@@ -234,8 +274,10 @@ func testDisplayManagerEnablesPrivacyModeCapturesAndForcesDisplays() throws {
         "captured internal brightness"
     )
     try expect(
-        snapshot.externalDisplays.isEmpty,
-        "privacy mode does not capture external restore state"
+        snapshot.externalDisplays == [
+            ExternalPrivacyDisplayState(displayIndex: 1, brightnessPercent: nil, restoreInput: 15)
+        ],
+        "privacy mode captures external display indices"
     )
     try expect(
         internalController.setCommands == [
@@ -252,8 +294,7 @@ func testDisplayManagerEnablesPrivacyModeCapturesAndForcesDisplays() throws {
     try expect(
         runner.commands == [
             ["system_profiler", "SPDisplaysDataType", "-json"],
-            ["/usr/libexec/corebrightnessdiag", "status-info"],
-            ["system_profiler", "SPDisplaysDataType", "-json"]
+            ["/usr/libexec/corebrightnessdiag", "status-info"]
         ],
         "privacy enable commands"
     )
@@ -380,15 +421,115 @@ func testDisplayManagerEnforcesPrivacyModeFromSnapshotWithoutReloadingDisplays()
         "internal enforce command"
     )
     try expect(
-        runner.commands == [
-            ["system_profiler", "SPDisplaysDataType", "-json"]
-        ],
+        runner.commands.isEmpty,
         "privacy enforce commands"
     )
     try expect(
         externalPowerController.setCommands.isEmpty,
         "no external power command without external displays"
     )
+}
+
+func testPrivacyEnforcementLoopDoesNotRepowerAnOffDisplay() throws {
+    let runner = RecordingCommandRunner(results: [])
+    let internalController = RecordingInternalBrightnessController(readValues: [:])
+    let externalPowerController = RecordingExternalPowerController()
+    let manager = DisplayManager(
+        runner: runner,
+        internalControllerProvider: { internalController },
+        externalPowerControllerProvider: { externalPowerController }
+    )
+    let snapshot = DisplayPrivacyModeSnapshot(
+        internalDisplays: [
+            InternalPrivacyDisplayState(displayID: 1, brightnessPercent: 56)
+        ],
+        externalDisplays: [
+            ExternalPrivacyDisplayState(displayIndex: 1, brightnessPercent: nil, restoreInput: 15)
+        ]
+    )
+
+    try manager.enforcePrivacyMode(using: snapshot, powerOffExternalDisplays: false)
+
+    try expect(
+        internalController.setCommands == [InternalSetCommand(displayID: 1, percent: 0)],
+        "privacy loop keeps the internal display dimmed"
+    )
+    try expect(
+        externalPowerController.setCommands.isEmpty,
+        "privacy loop does not resend DDC to an off external display"
+    )
+}
+
+func testPrivacyModeUsesExpectedExternalDisplayWhenLidClosed() throws {
+    let closedLidJSON = """
+    {
+      "SPDisplaysDataType": [
+        {
+          "_name": "Apple M3 Pro",
+          "spdisplays_ndrvs": []
+        }
+      ]
+    }
+    """
+    let runner = RecordingCommandRunner(results: [
+        CommandResult(exitCode: 0, stdout: closedLidJSON, stderr: ""),
+        CommandResult(exitCode: 1, stdout: "", stderr: "no internal display")
+    ])
+    let externalPowerController = RecordingExternalPowerController()
+    let manager = DisplayManager(
+        runner: runner,
+        internalControllerProvider: {
+            throw BrightnessError.invalidOutput("unused")
+        },
+        externalPowerControllerProvider: { externalPowerController }
+    )
+
+    let snapshot = try manager.enablePrivacyMode(expectedExternalDisplayIndices: [1])
+
+    try expect(
+        snapshot.externalDisplays == [
+            ExternalPrivacyDisplayState(displayIndex: 1, brightnessPercent: nil, restoreInput: 15)
+        ],
+        "closed-lid privacy snapshot preserves expected external display"
+    )
+    try expect(
+        externalPowerController.setCommands == [
+            ExternalPowerCommand(displayIndex: 1, mode: .off)
+        ],
+        "closed-lid privacy power command"
+    )
+}
+
+func testPrivacyModeRejectsClosedLidWithoutKnownExternalDisplay() throws {
+    let closedLidJSON = """
+    {
+      "SPDisplaysDataType": [
+        {
+          "_name": "Apple M3 Pro",
+          "spdisplays_ndrvs": []
+        }
+      ]
+    }
+    """
+    let runner = RecordingCommandRunner(results: [
+        CommandResult(exitCode: 0, stdout: closedLidJSON, stderr: ""),
+        CommandResult(exitCode: 1, stdout: "", stderr: "no internal display")
+    ])
+    let externalPowerController = RecordingExternalPowerController()
+    let manager = DisplayManager(
+        runner: runner,
+        internalControllerProvider: {
+            throw BrightnessError.invalidOutput("unused")
+        },
+        externalPowerControllerProvider: { externalPowerController }
+    )
+
+    do {
+        _ = try manager.enablePrivacyMode(expectedExternalDisplayIndices: [])
+        throw TestFailure(description: "closed-lid privacy should reject a missing target")
+    } catch BrightnessError.noKnownExternalDisplay {
+        try expect(externalPowerController.setCommands.isEmpty, "missing target sends no DDC command")
+    }
 }
 
 func testDisplayManagerExternalPrivacyModePowersOffExternalDisplays() throws {
@@ -444,18 +585,22 @@ func testDisplayManagerExternalPrivacyModePowersOffExternalDisplays() throws {
 func testMenuPanelSizingUsesModernHeightForTwoDisplays() throws {
     try expect(MenuPanelSizing.width == 380, "modern menu width")
     try expect(
-        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 422,
+        MenuPanelSizing.height(displayCount: 1, isLoading: false, hasError: false) == 362,
+        "single-display menu removes unused vertical space"
+    )
+    try expect(
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 440,
         "modern two-display menu height"
     )
 }
 
 func testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates() throws {
     try expect(
-        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 304,
+        MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 322,
         "modern loading menu height"
     )
     try expect(
-        MenuPanelSizing.height(displayCount: 5, isLoading: false, hasError: true) == 540,
+        MenuPanelSizing.height(displayCount: 5, isLoading: false, hasError: true) == 600,
         "modern many-display menu height cap"
     )
 }
@@ -463,25 +608,40 @@ func testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates() throws {
 func testModernMenuSizing() throws {
     try expect(MenuPanelSizing.width == 380.0, "modern menu width")
     try expect(
-        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 422.0,
+        MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 440.0,
         "modern menu height for two displays"
     )
     try expect(
-        MenuPanelSizing.height(displayCount: 4, isLoading: false, hasError: true) == 540.0,
+        MenuPanelSizing.height(displayCount: 4, isLoading: false, hasError: true) == 600.0,
         "modern menu height remains bounded"
     )
 }
 
-func testMenuPanelSizingDoesNotJumpWhenErrorAppears() throws {
+func testParsesSleepDisabledIORegistryState() throws {
+    try expect(
+        SleepDisabledStateParser.parse("|   \"SleepDisabled\" = Yes") == true,
+        "enabled SleepDisabled state"
+    )
+    try expect(
+        SleepDisabledStateParser.parse("|   \"SleepDisabled\" = No") == false,
+        "disabled SleepDisabled state"
+    )
+    try expect(
+        SleepDisabledStateParser.parse("|   \"OtherProperty\" = Yes") == nil,
+        "missing SleepDisabled state"
+    )
+}
+
+func testMenuPanelSizingIncludesErrorsOnlyWhenPresent() throws {
     try expect(
         MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: true)
-            == MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false),
-        "error row should not change menu height"
+            - MenuPanelSizing.height(displayCount: 2, isLoading: false, hasError: false) == 42,
+        "error row should expand the menu only when present"
     )
     try expect(
         MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: true)
-            == MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false),
-        "loading error should not change menu height"
+            - MenuPanelSizing.height(displayCount: 0, isLoading: true, hasError: false) == 42,
+        "loading error should expand the menu only when present"
     )
 }
 
@@ -525,11 +685,20 @@ struct InternalSetCommand: Equatable {
 }
 
 final class RecordingExternalPowerController: ExternalPowerControlling {
-    let name = "test-power"
+    let name: String
     var setCommands: [ExternalPowerCommand] = []
+    private let failure: Error?
+
+    init(name: String = "test-power", failure: Error? = nil) {
+        self.name = name
+        self.failure = failure
+    }
 
     func setPowerMode(displayIndex: Int, mode: ExternalPowerMode) throws {
         setCommands.append(ExternalPowerCommand(displayIndex: displayIndex, mode: mode))
+        if let failure {
+            throw failure
+        }
     }
 }
 
@@ -540,22 +709,28 @@ struct ExternalPowerCommand: Equatable {
 
 let tests: [(String, () throws -> Void)] = [
     ("parse system_profiler displays", testParsesInternalAndExternalDisplaysFromSystemProfilerJSON),
+    ("parse system_profiler without displays", testParsesGPUWithoutConnectedDisplays),
     ("parse corebrightnessdiag brightness", testParsesDisplayServicesBrightnessByDisplayID),
     ("m1ddc backend commands", testM1DDCBackendBuildsGetAndSetCommands),
     ("m1ddc input command", testM1DDCBackendBuildsInputCommand),
     ("m1ddc input read command", testM1DDCBackendReadsInputCommand),
     ("m1ddc power command", testM1DDCPowerControllerBuildsStandbyCommand),
     ("external power factory m1ddc", testExternalPowerControllerFactoryPrefersM1DDC),
+    ("external power fallback", testExternalPowerControllerFallsBackAfterM1DDCFailure),
     ("ddcctl backend commands", testDDCCTLBackendParsesCurrentValueAndBuildsSetCommand),
     ("display manager privacy enable", testDisplayManagerEnablesPrivacyModeCapturesAndForcesDisplays),
     ("display manager external power off", testDisplayManagerPowersOffExternalDisplaysDirectly),
     ("display manager privacy restore", testDisplayManagerRestoresPrivacyModeSnapshot),
     ("display manager privacy enforce", testDisplayManagerEnforcesPrivacyModeFromSnapshotWithoutReloadingDisplays),
+    ("display manager privacy loop", testPrivacyEnforcementLoopDoesNotRepowerAnOffDisplay),
+    ("display manager closed-lid privacy", testPrivacyModeUsesExpectedExternalDisplayWhenLidClosed),
+    ("display manager missing closed-lid target", testPrivacyModeRejectsClosedLidWithoutKnownExternalDisplay),
     ("display manager external privacy power off", testDisplayManagerExternalPrivacyModePowersOffExternalDisplays),
     ("modern menu sizing for two displays", testMenuPanelSizingUsesModernHeightForTwoDisplays),
     ("bounded modern menu sizing states", testMenuPanelSizingBoundsModernLoadingAndManyDisplayStates),
     ("modern menu sizing", testModernMenuSizing),
-    ("menu sizing does not jump when error appears", testMenuPanelSizingDoesNotJumpWhenErrorAppears)
+    ("menu sizing follows error content", testMenuPanelSizingIncludesErrorsOnlyWhenPresent),
+    ("parse SleepDisabled state", testParsesSleepDisabledIORegistryState)
 ]
 
 var failures: [String] = []

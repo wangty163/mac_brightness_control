@@ -55,6 +55,34 @@ downloading it, macOS may require the first launch through Control-click > Open.
 - External privacy power-off uses `m1ddc display <n> set standby 5` when
   available, with the app's built-in DDC/CI DPMS writer as a fallback. It does
   not use `displayplacer`.
+- Privacy Mode also offers a one-shot action that powers off the external
+  display once without entering the maintained Privacy Mode state, so manually
+  waking the display does not trigger another power-off.
+- Lid Sleep Protection registers a protected `SMAppService` launch daemon and
+  requires approval in System Settings before external power-off. The daemon
+  holds macOS `SleepDisabled` only while an authenticated app session needs it,
+  continuously verifies the state, survives daemon restarts, and restores normal
+  lid sleep after release, app exit, or connection loss. Launch daemons require a signed,
+  notarized application bundle for distribution.
+
+For a local package, `build_app.sh` uses ad-hoc signing by default; the
+installer pins that exact local build's designated requirement and places
+the daemon executable in `/Library/PrivilegedHelperTools`. A normal
+`SMAppService` install fails closed without either that pinned requirement or a
+Team ID. Set `BRIGHTNESS_CODE_SIGN_IDENTITY` to a Developer ID Application
+identity and notarize the bundle before distribution.
+
+Install a local build with:
+
+```bash
+./scripts/install_local_root.sh ".build/release/Brightness Control.app"
+```
+
+The script verifies and stages the app in `/private/tmp` before requesting
+administrator authentication, so macOS Documents privacy does not block the
+privileged installer. Use `--preflight` to validate the same staging path
+without installing.
+
 - Display state refreshes automatically on launch, app activation, screen
   changes, wake/session events, and a short background interval. The app does
   not expose a manual refresh button.

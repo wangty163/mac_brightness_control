@@ -75,44 +75,62 @@ public final class DisplayManager: @unchecked Sendable {
         }
     }
 
-    public func disconnectExternalDisplays() throws {
+    public func disconnectExternalDisplays(expectedDisplayIndices: [Int] = []) throws {
         let displays = try loadDisplays()
         let externalDisplays = displays.filter { $0.kind == .external }
-        guard !externalDisplays.isEmpty else { return }
+        let discoveredIndices = externalDisplays.isEmpty
+            ? []
+            : Array(1...externalDisplays.count)
+        let displayIndices = discoveredIndices.isEmpty ? expectedDisplayIndices : discoveredIndices
+        guard !displayIndices.isEmpty else { return }
 
         let powerController = externalPowerControllerProvider()
-        for externalIndex in 1...externalDisplays.count {
+        for externalIndex in displayIndices {
             try powerController.setPowerMode(displayIndex: externalIndex, mode: .off)
         }
     }
 
     public func enablePrivacyMode(
         hideInput: Int = DisplayManager.defaultExternalPrivacyHideInput,
-        fallbackRestoreInput: Int = DisplayManager.defaultExternalPrivacyRestoreInput
+        fallbackRestoreInput: Int = DisplayManager.defaultExternalPrivacyRestoreInput,
+        expectedExternalDisplayIndices: [Int] = []
     ) throws -> DisplayPrivacyModeSnapshot {
-        let snapshot = try capturePrivacyModeSnapshot(fallbackRestoreInput: fallbackRestoreInput)
+        let snapshot = try capturePrivacyModeSnapshot(
+            fallbackRestoreInput: fallbackRestoreInput,
+            expectedExternalDisplayIndices: expectedExternalDisplayIndices
+        )
         try enforcePrivacyMode(using: snapshot, hideInput: hideInput)
         return snapshot
     }
 
     public func enforcePrivacyMode(
         using snapshot: DisplayPrivacyModeSnapshot,
-        hideInput: Int = DisplayManager.defaultExternalPrivacyHideInput
+        hideInput: Int = DisplayManager.defaultExternalPrivacyHideInput,
+        powerOffExternalDisplays: Bool = true
     ) throws {
         _ = hideInput
-        let internalController = try internalControllerProvider()
-        for display in snapshot.internalDisplays {
-            try internalController.setBrightness(displayID: display.displayID, percent: 0)
+        if !snapshot.internalDisplays.isEmpty {
+            let internalController = try internalControllerProvider()
+            for display in snapshot.internalDisplays {
+                try internalController.setBrightness(displayID: display.displayID, percent: 0)
+            }
         }
 
-        try disconnectExternalDisplays()
+        if powerOffExternalDisplays {
+            let powerController = externalPowerControllerProvider()
+            for display in snapshot.externalDisplays {
+                try powerController.setPowerMode(displayIndex: display.displayIndex, mode: .off)
+            }
+        }
     }
 
     public func restorePrivacyMode(from snapshot: DisplayPrivacyModeSnapshot) throws {
-        let internalController = try internalControllerProvider()
-        for display in snapshot.internalDisplays {
-            if let brightnessPercent = display.brightnessPercent {
-                try internalController.setBrightness(displayID: display.displayID, percent: brightnessPercent)
+        if !snapshot.internalDisplays.isEmpty {
+            let internalController = try internalControllerProvider()
+            for display in snapshot.internalDisplays {
+                if let brightnessPercent = display.brightnessPercent {
+                    try internalController.setBrightness(displayID: display.displayID, percent: brightnessPercent)
+                }
             }
         }
 
@@ -130,7 +148,10 @@ public final class DisplayManager: @unchecked Sendable {
         }
     }
 
-    private func capturePrivacyModeSnapshot(fallbackRestoreInput: Int) throws -> DisplayPrivacyModeSnapshot {
+    private func capturePrivacyModeSnapshot(
+        fallbackRestoreInput: Int,
+        expectedExternalDisplayIndices: [Int]
+    ) throws -> DisplayPrivacyModeSnapshot {
         let displays = try loadDisplays()
         let brightnessByDisplayID = loadCoreBrightnessValues()
         let hasInternalDisplay = displays.contains { $0.kind == .internal }
@@ -151,9 +172,27 @@ public final class DisplayManager: @unchecked Sendable {
             )
         }
 
+        let externalDisplayCount = displays.filter { $0.kind == .external }.count
+        let discoveredExternalIndices = externalDisplayCount == 0
+            ? []
+            : Array(1...externalDisplayCount)
+        let externalIndices = discoveredExternalIndices.isEmpty
+            ? expectedExternalDisplayIndices
+            : discoveredExternalIndices
+        guard !externalIndices.isEmpty else {
+            throw BrightnessError.noKnownExternalDisplay
+        }
+        let externalDisplays = externalIndices.map {
+            ExternalPrivacyDisplayState(
+                displayIndex: $0,
+                brightnessPercent: nil,
+                restoreInput: fallbackRestoreInput
+            )
+        }
+
         return DisplayPrivacyModeSnapshot(
             internalDisplays: internalDisplays,
-            externalDisplays: []
+            externalDisplays: externalDisplays
         )
     }
 

@@ -5,7 +5,7 @@ public enum SystemProfilerParser {
         let data = Data(jsonText.utf8)
         let payload = try JSONDecoder().decode(SystemProfilerPayload.self, from: data)
         return payload.SPDisplaysDataType.flatMap { gpu in
-            gpu.spdisplaysNdrvs.map { raw in
+            (gpu.spdisplaysNdrvs ?? []).map { raw in
                 let connection = raw.connectionType
                 return DisplayInfo(
                     displayID: parseDisplayID(raw.displayID),
@@ -33,7 +33,7 @@ private struct SystemProfilerPayload: Decodable {
 }
 
 private struct GPUDisplays: Decodable {
-    let spdisplaysNdrvs: [RawDisplay]
+    let spdisplaysNdrvs: [RawDisplay]?
 
     enum CodingKeys: String, CodingKey {
         case spdisplaysNdrvs = "spdisplays_ndrvs"

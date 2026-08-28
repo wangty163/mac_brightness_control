@@ -10,6 +10,7 @@ let package = Package(
     products: [
         .library(name: "BrightnessControlCore", targets: ["BrightnessControlCore"]),
         .executable(name: "BrightnessControlApp", targets: ["BrightnessControlApp"]),
+        .executable(name: "BrightnessControlSleepHelper", targets: ["BrightnessControlSleepHelper"]),
         .executable(name: "BrightnessControlCoreTestRunner", targets: ["BrightnessControlCoreTestRunner"])
     ],
     targets: [
@@ -28,7 +29,17 @@ let package = Package(
         ),
         .executableTarget(
             name: "BrightnessControlApp",
-            dependencies: ["BrightnessControlCore"]
+            dependencies: ["BrightnessControlCore"],
+            linkerSettings: [
+                .linkedFramework("ServiceManagement")
+            ]
+        ),
+        .executableTarget(
+            name: "BrightnessControlSleepHelper",
+            dependencies: ["BrightnessControlCore"],
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]
         ),
         .executableTarget(
             name: "BrightnessControlCoreTestRunner",

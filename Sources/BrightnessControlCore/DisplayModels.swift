@@ -141,6 +141,7 @@ public enum BrightnessError: Error, LocalizedError, Equatable {
     case missingExternalInputBackend
     case missingDisplayServicesSymbol(String)
     case displayServicesFailed(operation: String, code: Int32)
+    case noKnownExternalDisplay
 
     public var errorDescription: String? {
         switch self {
@@ -158,6 +159,8 @@ public enum BrightnessError: Error, LocalizedError, Equatable {
             return "DisplayServices symbol not found: \(name)"
         case let .displayServicesFailed(operation, code):
             return "DisplayServices \(operation) failed with code \(code)."
+        case .noKnownExternalDisplay:
+            return "No known external display is available for DDC power-off. Open the lid or reconnect the display, wait for detection, then try again."
         }
     }
 }

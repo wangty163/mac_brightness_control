@@ -61,23 +61,48 @@ public final class M1DDCPowerController: ExternalPowerControlling {
     }
 }
 
+public final class FallbackExternalPowerController: ExternalPowerControlling {
+    public var name: String { primary.name }
+    private let primary: any ExternalPowerControlling
+    private let fallback: any ExternalPowerControlling
+
+    public init(
+        primary: any ExternalPowerControlling,
+        fallback: any ExternalPowerControlling
+    ) {
+        self.primary = primary
+        self.fallback = fallback
+    }
+
+    public func setPowerMode(displayIndex: Int, mode: ExternalPowerMode) throws {
+        do {
+            try primary.setPowerMode(displayIndex: displayIndex, mode: mode)
+        } catch {
+            let primaryMessage = error.localizedDescription
+            do {
+                try fallback.setPowerMode(displayIndex: displayIndex, mode: mode)
+            } catch {
+                throw BrightnessError.invalidOutput(
+                    "\(primary.name) failed: \(primaryMessage) Built-in DDC fallback failed: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+}
+
 public enum ExternalPowerControllerFactory {
     public static func make(preferredTool: String = "auto", runner: CommandRunning) -> any ExternalPowerControlling {
         if preferredTool == "auto" || preferredTool == "m1ddc" {
             if let path = findExecutable("m1ddc", runner: runner) {
-                return M1DDCPowerController(path: path, runner: runner)
+                return FallbackExternalPowerController(
+                    primary: M1DDCPowerController(path: path, runner: runner),
+                    fallback: DirectDDCPowerController()
+                )
             }
         }
         return DirectDDCPowerController()
     }
 
-    private static func findExecutable(_ name: String, runner: CommandRunning) -> String? {
-        if let result = try? runner.run(["/usr/bin/which", name]), result.exitCode == 0 {
-            let path = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            return path.isEmpty ? nil : path
-        }
-        return nil
-    }
 }
 
 public final class M1DDCBackend: ExternalInputSwitchingBackend {
@@ -166,13 +191,23 @@ public enum ExternalBackendFactory {
         return nil
     }
 
-    private static func findExecutable(_ name: String, runner: CommandRunning) -> String? {
-        if let result = try? runner.run(["/usr/bin/which", name]), result.exitCode == 0 {
-            let path = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            return path.isEmpty ? nil : path
+}
+
+private func findExecutable(_ name: String, runner: CommandRunning) -> String? {
+    if let result = try? runner.run(["/usr/bin/which", name]), result.exitCode == 0 {
+        let path = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !path.isEmpty {
+            return path
         }
-        return nil
     }
+
+    for directory in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let path = "\(directory)/\(name)"
+        if FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+    }
+    return nil
 }
 
 private func parseFirstInteger(_ text: String) -> Int? {

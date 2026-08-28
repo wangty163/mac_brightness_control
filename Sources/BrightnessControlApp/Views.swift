@@ -7,48 +7,57 @@ struct MenuBarPanelView: View {
     let onOpenDetails: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                header
 
-            PrivacyModeToggleView(compact: true)
-                .environmentObject(appState)
+                PrivacyModeToggleView(compact: true)
+                    .environmentObject(appState)
 
-            displaySection
+                ClamshellSleepProtectionView(compact: true)
+                    .environmentObject(appState)
 
-            QuickActionsView(compact: true) { percent in
-                appState.setAll(percent)
-            }
-            .disabled(appState.privacyModeEnabled)
+                displaySection
 
-            ExternalConnectionControls(compact: true)
-                .environmentObject(appState)
-
-            MenuErrorSlot(message: appState.errorMessage)
-
-            Divider()
-
-            HStack {
-                Button {
-                    onOpenDetails()
-                } label: {
-                    Label("Details", systemImage: "sidebar.right")
+                QuickActionsView(compact: true) { percent in
+                    appState.setAll(percent)
                 }
-                .help("Details")
+                .disabled(appState.privacyModeEnabled)
 
-                Spacer()
+                ExternalConnectionControls(compact: true)
+                    .environmentObject(appState)
 
-                Button {
-                    NSApplication.shared.terminate(nil)
-                } label: {
-                    Image(systemName: "power")
+                if let errorMessage = appState.errorMessage {
+                    ErrorMessageView(message: errorMessage, compact: true)
                 }
-                .help("Quit")
+
+                Divider()
+
+                HStack {
+                    Button {
+                        onOpenDetails()
+                    } label: {
+                        Label("Details", systemImage: "sidebar.right")
+                    }
+                    .help("Details")
+
+                    Spacer()
+
+                    Button {
+                        NSApplication.shared.terminate(nil)
+                    } label: {
+                        Image(systemName: "power")
+                    }
+                    .help("Quit")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .scrollIndicators(.automatic)
         .frame(width: MenuPanelSizing.width, height: menuHeight, alignment: .topLeading)
         .background(Color.clear)
     }
@@ -107,24 +116,31 @@ struct DetailWindowView: View {
     @EnvironmentObject private var appState: BrightnessAppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            detailHeader
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                detailHeader
 
-            PrivacyModeToggleView()
-                .environmentObject(appState)
+                PrivacyModeToggleView()
+                    .environmentObject(appState)
 
-            DetailActionsSection()
-                .environmentObject(appState)
+                ClamshellSleepProtectionView()
+                    .environmentObject(appState)
 
-            if let errorMessage = appState.errorMessage {
-                ErrorMessageView(message: errorMessage)
+                DetailActionsSection()
+                    .environmentObject(appState)
+
+                if let errorMessage = appState.errorMessage {
+                    ErrorMessageView(message: errorMessage)
+                }
+
+                displayList
+
+                footer
             }
-
-            displayList
-
-            footer
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(22)
+        .scrollIndicators(.automatic)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -173,17 +189,15 @@ struct DetailWindowView: View {
             EmptyStateView(title: "No displays", systemImage: "display.slash")
                 .frame(maxWidth: .infinity)
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(appState.displays) { display in
-                        DetailDisplayRow(status: display) { percent in
-                            appState.setBrightness(percent, for: display)
-                        }
-                        .disabled(appState.privacyModeEnabled)
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(appState.displays) { display in
+                    DetailDisplayRow(status: display) { percent in
+                        appState.setBrightness(percent, for: display)
                     }
+                    .disabled(appState.privacyModeEnabled)
                 }
-                .padding(.vertical, 2)
             }
+            .padding(.vertical, 2)
         }
     }
 
@@ -246,7 +260,11 @@ struct PrivacyModeToggleView: View {
                 VStack(alignment: .leading, spacing: compact ? 1 : 3) {
                     Text("Privacy Mode")
                         .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
-                    Text(appState.privacyModeEnabled ? "Internal dimmed, external powered off" : "Display controls are available")
+                    Text(
+                        appState.privacyModeEnabled
+                            ? "Internal dimmed, external powered off"
+                            : "Run once, or keep privacy active"
+                    )
                         .font(compact ? .caption2 : .caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -259,6 +277,20 @@ struct PrivacyModeToggleView: View {
                         .controlSize(.small)
                 }
 
+                Button(compact ? "Once" : "Run Once") {
+                    appState.runPrivacyModeOnce()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Power off the external display once without enabling continuous Privacy Mode")
+                .disabled(
+                    appState.privacyModeEnabled
+                        || !appState.hasKnownExternalDisplay
+                        || appState.externalPrivacyEnabled
+                        || appState.isPrivacyModeChanging
+                        || appState.isClamshellSleepProtectionChanging
+                )
+
                 Toggle(
                     "",
                     isOn: Binding(
@@ -268,7 +300,11 @@ struct PrivacyModeToggleView: View {
                 )
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .disabled(appState.isPrivacyModeChanging)
+                .accessibilityLabel("Privacy Mode")
+                .disabled(
+                    appState.isPrivacyModeChanging
+                        || appState.isClamshellSleepProtectionChanging
+                )
             }
         }
         .animation(.default, value: appState.privacyModeEnabled)
@@ -288,11 +324,91 @@ struct ExternalConnectionControls: View {
                     .frame(maxWidth: compact ? .infinity : nil)
             }
             .help("Turn off external display power through DDC")
-            .disabled(!appState.hasExternalDisplay || appState.externalPrivacyEnabled)
+            .disabled(
+                !appState.hasExternalDisplay
+                    || appState.externalPrivacyEnabled
+                    || appState.isPrivacyModeChanging
+                    || appState.isClamshellSleepProtectionChanging
+            )
         }
         .buttonStyle(.bordered)
         .controlSize(compact ? .small : .regular)
         .disabled(appState.privacyModeEnabled)
+    }
+}
+
+struct ClamshellSleepProtectionView: View {
+    @EnvironmentObject private var appState: BrightnessAppState
+    var compact = false
+
+    var body: some View {
+        PanelCard(compact: compact) {
+            HStack(spacing: compact ? 8 : 12) {
+                ZStack {
+                    Image(systemName: "moon.zzz")
+                        .opacity(appState.clamshellSleepProtectionToggleValue ? 0 : 1)
+                    Image(systemName: "laptopcomputer.and.arrow.down")
+                        .foregroundStyle(.green)
+                        .opacity(appState.clamshellSleepProtectionToggleValue ? 1 : 0)
+                }
+                .font(compact ? .callout : .title3)
+                .foregroundStyle(.secondary)
+                .frame(width: compact ? 22 : 28)
+                .animation(
+                    .easeInOut(duration: 0.16),
+                    value: appState.clamshellSleepProtectionToggleValue
+                )
+
+                VStack(alignment: .leading, spacing: compact ? 1 : 3) {
+                    Text("Lid Sleep Protection")
+                        .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+                    Text(
+                        appState.clamshellSleepProtectionToggleValue
+                            ? "Mac stays awake if the external display turns off"
+                            : "Administrator approval is required when enabled"
+                    )
+                    .font(compact ? .caption2 : .caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+
+                Spacer()
+
+                ZStack {
+                    if appState.isClamshellSleepProtectionChanging {
+                        ProgressView()
+                            .controlSize(.small)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(width: 16, height: 16)
+                .animation(
+                    .easeInOut(duration: 0.12),
+                    value: appState.isClamshellSleepProtectionChanging
+                )
+
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { appState.clamshellSleepProtectionToggleValue },
+                        set: { appState.setClamshellSleepProtectionEnabled($0) }
+                    )
+                )
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .accessibilityLabel("Lid Sleep Protection")
+                .disabled(
+                    appState.isClamshellSleepProtectionChanging
+                        || appState.isPrivacyModeChanging
+                        || appState.privacyModeEnabled
+                )
+            }
+        }
+        .help(
+            appState.privacyModeEnabled
+                ? "Privacy Mode requires lid-sleep protection. Turn Privacy Mode off first."
+                : "Uses macOS SleepDisabled while this app is running; normal lid sleep is restored when disabled or when the app exits."
+        )
     }
 }
 
@@ -561,22 +677,6 @@ private struct ErrorMessageView: View {
                 .foregroundStyle(.red)
                 .lineLimit(2)
         }
-    }
-}
-
-private struct MenuErrorSlot: View {
-    let message: String?
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            if let message {
-                ErrorMessageView(message: message, compact: true)
-            } else {
-                Color.clear
-            }
-        }
-        .frame(height: 42)
-        .accessibilityHidden(message == nil)
     }
 }
 
