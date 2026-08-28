@@ -20,7 +20,7 @@ func testParsesInternalAndExternalDisplaysFromSystemProfilerJSON() throws {
           "spdisplays_ndrvs": [
             {
               "_name": "Color LCD",
-              "_spdisplays_displayID": "1",
+              "_spdisplays_displayID": "4281106",
               "_spdisplays_resolution": "1512 x 982 @ 120.00Hz",
               "spdisplays_connection_type": "spdisplays_internal",
               "spdisplays_online": "spdisplays_yes"
@@ -42,7 +42,7 @@ func testParsesInternalAndExternalDisplaysFromSystemProfilerJSON() throws {
 
     try expect(displays.map(\.name) == ["Color LCD", "DELL U2720Q"], "display names")
     try expect(displays.map(\.kind) == [.internal, .external], "display kinds")
-    try expect(displays[0].displayID == 1, "internal display id")
+    try expect(displays[0].displayID == 0x4281106, "hexadecimal internal display id")
     try expect(displays[1].displayID == 2, "external display id")
     try expect(displays[1].resolution == "3840 x 2160 @ 60.00Hz", "external resolution")
 }

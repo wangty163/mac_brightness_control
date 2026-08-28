@@ -24,7 +24,7 @@ public enum SystemProfilerParser {
         if raw.hasPrefix("0x") || raw.hasPrefix("0X") {
             return UInt32(raw.dropFirst(2), radix: 16)
         }
-        return UInt32(raw)
+        return UInt32(raw, radix: 16)
     }
 }
 
