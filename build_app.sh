@@ -2,13 +2,25 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$ROOT_DIR/.build/release"
 APP_NAME="Brightness Control"
-APP_DIR="$BUILD_DIR/$APP_NAME.app"
 EXECUTABLE_NAME="BrightnessControlApp"
+APP_VERSION="${APP_VERSION:-1.0.0}"
+APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-1}"
+
+if [[ ! "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+  echo "APP_VERSION must contain one to three dot-separated integers." >&2
+  exit 1
+fi
+
+if [[ ! "$APP_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "APP_BUILD_NUMBER must be an integer." >&2
+  exit 1
+fi
 
 cd "$ROOT_DIR"
-swift build -c release --product "$EXECUTABLE_NAME"
+swift build -c release --product "$EXECUTABLE_NAME" "$@"
+BUILD_DIR="$(swift build -c release --show-bin-path "$@")"
+APP_DIR="$BUILD_DIR/$APP_NAME.app"
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
@@ -37,9 +49,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$APP_BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
@@ -49,4 +61,5 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 PLIST
 
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
+codesign --force --sign - "$APP_DIR"
 echo "$APP_DIR"

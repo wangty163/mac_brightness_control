@@ -16,7 +16,35 @@ swift run BrightnessControlApp
 open ".build/release/Brightness Control.app"
 ```
 
-The build script embeds `Resources/AppIcon.icns` into the generated app bundle.
+The build script embeds `Resources/AppIcon.icns` into the generated app bundle
+and applies an ad-hoc signature. To build a universal app for both Apple Silicon
+and Intel Macs:
+
+```bash
+./build_app.sh --arch arm64 --arch x86_64
+open ".build/apple/Products/Release/Brightness Control.app"
+```
+
+`APP_VERSION` and `APP_BUILD_NUMBER` can be set to override the values embedded
+in `Info.plist`.
+
+## Automated macOS Builds
+
+The `Build macOS App` GitHub Actions workflow runs the core tests and creates a
+universal, ad-hoc-signed app archive on every push to `main`, pull request, and
+manual run. Download `Brightness-Control-macOS-universal` from the workflow run's
+Artifacts section.
+
+Pushing a version tag also creates or updates a GitHub Release and attaches the
+app archive and its SHA-256 checksum:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The automated build is not notarized with an Apple Developer ID. After
+downloading it, macOS may require the first launch through Control-click > Open.
 
 ## Behavior
 
