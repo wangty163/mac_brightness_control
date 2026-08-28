@@ -25,6 +25,10 @@ and Intel Macs:
 open ".build/apple/Products/Release/Brightness Control.app"
 ```
 
+Multi-architecture `--arch` builds require full Xcode selected with
+`xcode-select`. On a Command Line Tools-only machine, omit `--arch` for a local
+current-architecture build or use the GitHub Actions universal artifact.
+
 `APP_VERSION` and `APP_BUILD_NUMBER` can be set to override the values embedded
 in `Info.plist`.
 

@@ -19,6 +19,11 @@ if [[ ! "$APP_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+if [[ " $* " == *" --arch "* ]] && ! /usr/bin/xcrun --find xcodebuild >/dev/null 2>&1; then
+  echo "--arch builds require full Xcode selected with xcode-select; omit --arch or use GitHub Actions." >&2
+  exit 1
+fi
+
 cd "$ROOT_DIR"
 swift build --disable-sandbox -c release "$@"
 BUILD_DIR="$(swift build -c release --show-bin-path "$@")"
