@@ -61,7 +61,11 @@ downloading it, macOS may require the first launch through Control-click > Open.
   not use `displayplacer`.
 - Privacy Mode also offers a one-shot action that powers off the external
   display once without entering the maintained Privacy Mode state, so manually
-  waking the display does not trigger another power-off.
+  waking the display does not trigger another power-off. With no external
+  display connected, the one-shot action dims the internal display once instead.
+- Privacy Mode can stay enabled with only the internal display connected. In
+  that case it keeps the internal display dimmed and does not start lid-sleep
+  protection because no external display is being powered off.
 - Lid Sleep Protection registers a protected `SMAppService` launch daemon and
   requires approval in System Settings before external power-off. The daemon
   holds macOS `SleepDisabled` only while an authenticated app session needs it,

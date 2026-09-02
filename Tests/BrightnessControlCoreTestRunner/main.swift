@@ -350,6 +350,51 @@ func testDisplayManagerPowersOffExternalDisplaysDirectly() throws {
     )
 }
 
+func testPrivacyModeSupportsInternalDisplayWithoutExternalDisplay() throws {
+    let internalOnlyJSON = """
+    {
+      "SPDisplaysDataType": [
+        {
+          "spdisplays_ndrvs": [
+            {
+              "_name": "Color LCD",
+              "_spdisplays_displayID": "1",
+              "spdisplays_connection_type": "spdisplays_internal",
+              "spdisplays_online": "spdisplays_yes"
+            }
+          ]
+        }
+      ]
+    }
+    """
+    let runner = RecordingCommandRunner(results: [
+        CommandResult(exitCode: 0, stdout: internalOnlyJSON, stderr: ""),
+        CommandResult(exitCode: 1, stdout: "", stderr: "brightness unavailable")
+    ])
+    let internalController = RecordingInternalBrightnessController(readValues: [1: 42])
+    let externalPowerController = RecordingExternalPowerController()
+    let manager = DisplayManager(
+        runner: runner,
+        internalControllerProvider: { internalController },
+        externalPowerControllerProvider: { externalPowerController }
+    )
+
+    let snapshot = try manager.enablePrivacyMode(expectedExternalDisplayIndices: [1])
+
+    try expect(
+        snapshot.internalDisplays == [
+            InternalPrivacyDisplayState(displayID: 1, brightnessPercent: 42)
+        ],
+        "internal-only privacy captures brightness"
+    )
+    try expect(snapshot.externalDisplays.isEmpty, "internal-only privacy ignores stale external displays")
+    try expect(
+        internalController.setCommands == [InternalSetCommand(displayID: 1, percent: 0)],
+        "internal-only privacy dims the internal display"
+    )
+    try expect(externalPowerController.setCommands.isEmpty, "internal-only privacy sends no DDC command")
+}
+
 func testDisplayManagerRestoresPrivacyModeSnapshot() throws {
     let runner = RecordingCommandRunner(results: [])
     let internalController = RecordingInternalBrightnessController(readValues: [:])
@@ -720,6 +765,7 @@ let tests: [(String, () throws -> Void)] = [
     ("ddcctl backend commands", testDDCCTLBackendParsesCurrentValueAndBuildsSetCommand),
     ("display manager privacy enable", testDisplayManagerEnablesPrivacyModeCapturesAndForcesDisplays),
     ("display manager external power off", testDisplayManagerPowersOffExternalDisplaysDirectly),
+    ("display manager internal-only privacy", testPrivacyModeSupportsInternalDisplayWithoutExternalDisplay),
     ("display manager privacy restore", testDisplayManagerRestoresPrivacyModeSnapshot),
     ("display manager privacy enforce", testDisplayManagerEnforcesPrivacyModeFromSnapshotWithoutReloadingDisplays),
     ("display manager privacy loop", testPrivacyEnforcementLoopDoesNotRepowerAnOffDisplay),

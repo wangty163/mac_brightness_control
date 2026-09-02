@@ -176,10 +176,10 @@ public final class DisplayManager: @unchecked Sendable {
         let discoveredExternalIndices = externalDisplayCount == 0
             ? []
             : Array(1...externalDisplayCount)
-        let externalIndices = discoveredExternalIndices.isEmpty
+        let externalIndices = discoveredExternalIndices.isEmpty && internalDisplays.isEmpty
             ? expectedExternalDisplayIndices
             : discoveredExternalIndices
-        guard !externalIndices.isEmpty else {
+        guard !internalDisplays.isEmpty || !externalIndices.isEmpty else {
             throw BrightnessError.noKnownExternalDisplay
         }
         let externalDisplays = externalIndices.map {

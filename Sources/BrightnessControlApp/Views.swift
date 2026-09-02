@@ -262,7 +262,9 @@ struct PrivacyModeToggleView: View {
                         .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
                     Text(
                         appState.privacyModeEnabled
-                            ? "Internal dimmed, external powered off"
+                            ? (appState.externalPrivacyEnabled
+                                ? "Internal dimmed, external powered off"
+                                : "Internal display kept dimmed")
                             : "Run once, or keep privacy active"
                     )
                         .font(compact ? .caption2 : .caption)
@@ -282,10 +284,13 @@ struct PrivacyModeToggleView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Power off the external display once without enabling continuous Privacy Mode")
+                .help(
+                    appState.hasExternalDisplay
+                        ? "Power off the external display once without enabling continuous Privacy Mode"
+                        : "Dim the internal display once without enabling continuous Privacy Mode"
+                )
                 .disabled(
                     appState.privacyModeEnabled
-                        || !appState.hasKnownExternalDisplay
                         || appState.externalPrivacyEnabled
                         || appState.isPrivacyModeChanging
                         || appState.isClamshellSleepProtectionChanging

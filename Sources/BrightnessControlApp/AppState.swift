@@ -88,6 +88,10 @@ final class BrightnessAppState: ObservableObject {
         displays.contains { $0.display.kind == .external }
     }
 
+    var hasInternalDisplay: Bool {
+        displays.contains { $0.display.kind == .internal }
+    }
+
     var hasKnownExternalDisplay: Bool {
         hasExternalDisplay || !lastKnownExternalDisplayIndices.isEmpty
     }
@@ -222,6 +226,10 @@ final class BrightnessAppState: ObservableObject {
     }
 
     func runPrivacyModeOnce() {
+        if !hasExternalDisplay, hasInternalDisplay {
+            dimInternalDisplaysOnce()
+            return
+        }
         disconnectExternalDisplays()
     }
 
@@ -245,6 +253,12 @@ final class BrightnessAppState: ObservableObject {
 
     func shutdown() {
         stopPrivacyEnforcementLoop()
+        if let privacyModeSnapshot {
+            try? manager.restorePrivacyMode(from: privacyModeSnapshot)
+        }
+        privacyModeSnapshot = nil
+        privacyModeEnabled = false
+        externalPrivacyEnabled = false
         sleepProtectionReasons.removeAll()
         try? clamshellSleepController.disable()
         clamshellSleepProtectionEnabled = false
@@ -257,7 +271,7 @@ final class BrightnessAppState: ObservableObject {
         guard !isClamshellSleepProtectionChanging else { return }
 
         if enabled {
-            enablePrivacyModeWithSleepProtection()
+            enablePrivacyMode()
             return
         }
 
@@ -298,17 +312,49 @@ final class BrightnessAppState: ObservableObject {
         }
     }
 
-    private func enablePrivacyModeWithSleepProtection() {
+    private func dimInternalDisplaysOnce() {
+        guard allowDisplayConfigurationChange() else { return }
+        guard !isPrivacyModeChanging else { return }
+
         isPrivacyModeChanging = true
-        isClamshellSleepProtectionChanging = true
+        let manager = manager
+        let internalDisplays = displays.filter { $0.display.kind == .internal }
+        Task { [weak self] in
+            let message = await Task.detached(priority: .userInitiated) { () -> String? in
+                do {
+                    for display in internalDisplays {
+                        try manager.setBrightness(0, for: display)
+                    }
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+
+            guard let self else { return }
+            self.isPrivacyModeChanging = false
+            if let message {
+                self.errorMessage = message
+            } else {
+                self.errorMessage = nil
+                self.refreshAsync()
+            }
+        }
+    }
+
+    private func enablePrivacyMode() {
+        isPrivacyModeChanging = true
         let manager = manager
         let controller = clamshellSleepController
         let expectedExternalDisplayIndices = lastKnownExternalDisplayIndices
+        let requiresSleepProtection = hasExternalDisplay
+            || (!hasInternalDisplay && !expectedExternalDisplayIndices.isEmpty)
+        isClamshellSleepProtectionChanging = requiresSleepProtection
 
         Task { [weak self] in
             let outcome = await Task.detached(priority: .userInitiated) { () -> ProtectedDisplayActionOutcome in
                 do {
-                    let protectionStarted = try controller.enable()
+                    let protectionStarted = requiresSleepProtection ? try controller.enable() : false
                     do {
                         return .privacyEnabled(
                             try manager.enablePrivacyMode(
@@ -333,9 +379,11 @@ final class BrightnessAppState: ObservableObject {
             case let .privacyEnabled(snapshot):
                 self.privacyModeSnapshot = snapshot
                 self.privacyModeEnabled = true
-                self.externalPrivacyEnabled = true
-                self.sleepProtectionReasons.insert(.privacyMode)
-                self.clamshellSleepProtectionEnabled = true
+                self.externalPrivacyEnabled = !snapshot.externalDisplays.isEmpty
+                if requiresSleepProtection {
+                    self.sleepProtectionReasons.insert(.privacyMode)
+                    self.clamshellSleepProtectionEnabled = true
+                }
                 self.errorMessage = nil
                 self.startPrivacyEnforcementLoop()
                 self.refreshAsync()
