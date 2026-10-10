@@ -45,7 +45,7 @@ public final class DirectDDCPowerController: ExternalPowerControlling {
 }
 
 public final class M1DDCPowerController: ExternalPowerControlling {
-    public let name = "m1ddc"
+    public var name: String { URL(fileURLWithPath: path).lastPathComponent == "BrightnessControlDDC" ? "Built-in DDC" : "m1ddc" }
     private let path: String
     private let runner: CommandRunning
 
@@ -78,6 +78,8 @@ public final class FallbackExternalPowerController: ExternalPowerControlling {
         do {
             try primary.setPowerMode(displayIndex: displayIndex, mode: mode)
         } catch {
+            // A crashed writer may already have sent the command. Do not replay it.
+            if case BrightnessError.commandTerminated = error { throw error }
             let primaryMessage = error.localizedDescription
             do {
                 try fallback.setPowerMode(displayIndex: displayIndex, mode: mode)
@@ -94,10 +96,15 @@ public enum ExternalPowerControllerFactory {
     public static func make(preferredTool: String = "auto", runner: CommandRunning) -> any ExternalPowerControlling {
         if preferredTool == "auto" || preferredTool == "m1ddc" {
             if let path = findExecutable("m1ddc", runner: runner) {
+                #if arch(arm64)
+                // The IOFramebuffer fallback cannot control Apple Silicon DCP displays.
+                return M1DDCPowerController(path: path, runner: runner)
+                #else
                 return FallbackExternalPowerController(
                     primary: M1DDCPowerController(path: path, runner: runner),
                     fallback: DirectDDCPowerController()
                 )
+                #endif
             }
         }
         return DirectDDCPowerController()
@@ -106,7 +113,7 @@ public enum ExternalPowerControllerFactory {
 }
 
 public final class M1DDCBackend: ExternalInputSwitchingBackend {
-    public let name = "m1ddc"
+    public var name: String { URL(fileURLWithPath: path).lastPathComponent == "BrightnessControlDDC" ? "Built-in DDC" : "m1ddc" }
     private let path: String
     private let runner: CommandRunning
 
@@ -194,6 +201,12 @@ public enum ExternalBackendFactory {
 }
 
 private func findExecutable(_ name: String, runner: CommandRunning) -> String? {
+    #if arch(arm64)
+    if name == "m1ddc", Bundle.main.bundleURL.pathExtension == "app", let directory = Bundle.main.executableURL?.deletingLastPathComponent() {
+        let bundled = directory.appendingPathComponent("BrightnessControlDDC").path
+        if FileManager.default.isExecutableFile(atPath: bundled) { return bundled }
+    }
+    #endif
     if let result = try? runner.run(["/usr/bin/which", name]), result.exitCode == 0 {
         let path = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         if !path.isEmpty {

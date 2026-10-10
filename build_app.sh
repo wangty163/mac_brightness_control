@@ -6,7 +6,7 @@ APP_NAME="Brightness Control"
 EXECUTABLE_NAME="BrightnessControlApp"
 SLEEP_HELPER_NAME="BrightnessControlSleepHelper"
 CODE_SIGN_IDENTITY="${BRIGHTNESS_CODE_SIGN_IDENTITY:--}"
-APP_VERSION="${APP_VERSION:-1.1.0}"
+APP_VERSION="${APP_VERSION:-1.2.0}"
 APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-1}"
 
 if [[ ! "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
@@ -37,6 +37,8 @@ mkdir -p \
   "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$EXECUTABLE_NAME" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
 cp "$BUILD_DIR/$SLEEP_HELPER_NAME" "$APP_DIR/Contents/Library/HelperTools/$SLEEP_HELPER_NAME"
+cp "$BUILD_DIR/BrightnessControlDDC" "$APP_DIR/Contents/MacOS/BrightnessControlDDC"
+cp "$ROOT_DIR/Vendor/m1ddc/LICENSE" "$APP_DIR/Contents/Resources/m1ddc-LICENSE.txt"
 cp \
   "$ROOT_DIR/Resources/local.wty.BrightnessControl.SleepHelper.plist" \
   "$APP_DIR/Contents/Library/LaunchDaemons/local.wty.BrightnessControl.SleepHelper.plist"
@@ -73,6 +75,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>$APP_BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>
@@ -80,12 +84,18 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 PLIST
 
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
+# Keep the application launchable when the caller uses a restrictive umask.
+# `X` grants traversal to directories and execution only to files that are
+# already executable; resources remain non-executable.
+chmod -R go+rX "$APP_DIR"
+chmod -R go-w "$APP_DIR"
 codesign \
   --force \
   --options runtime \
   --identifier "local.wty.BrightnessControl.SleepHelper" \
   --sign "$CODE_SIGN_IDENTITY" \
   "$APP_DIR/Contents/Library/HelperTools/$SLEEP_HELPER_NAME"
+codesign --force --options runtime --sign "$CODE_SIGN_IDENTITY" "$APP_DIR/Contents/MacOS/BrightnessControlDDC"
 codesign --force --deep --options runtime --sign "$CODE_SIGN_IDENTITY" "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 echo "$APP_DIR"

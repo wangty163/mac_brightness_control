@@ -29,10 +29,13 @@ jobs:
       - name: Run core tests
         run: swift run BrightnessControlCoreTestRunner
 
+      - name: Run DDC regression tests without display writes
+        run: ./scripts/test_ddc.sh
+
       - name: Set app version
         shell: bash
         run: |
-          app_version="1.1.0"
+          app_version="1.2.0"
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             app_version="${GITHUB_REF_NAME#v}"
             app_version="${app_version%%-*}"
@@ -58,6 +61,7 @@ jobs:
           plutil -lint "$app_path/Contents/Info.plist"
           codesign --verify --deep --strict --verbose=2 "$app_path"
           lipo "$executable" -verify_arch arm64 x86_64
+          lipo "$app_path/Contents/MacOS/BrightnessControlDDC" -verify_arch arm64 x86_64
 
       - name: Create distributable archive
         shell: bash

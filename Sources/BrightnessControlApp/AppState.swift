@@ -1,7 +1,7 @@
 import BrightnessControlCore
 import Foundation
 
-private let lastKnownExternalDisplayIndicesDefaultsKey = "LastKnownExternalDisplayIndices"
+private let lastKnownExternalDisplayIndicesDefaultsKey = "LastKnownExternalDisplayIndicesV2"
 
 private func loadLastKnownExternalDisplayIndices() -> [Int] {
     (UserDefaults.standard.array(forKey: lastKnownExternalDisplayIndicesDefaultsKey) ?? [])
@@ -94,6 +94,10 @@ final class BrightnessAppState: ObservableObject {
 
     var hasKnownExternalDisplay: Bool {
         hasExternalDisplay || !lastKnownExternalDisplayIndices.isEmpty
+    }
+
+    var canStartPrivacyMode: Bool {
+        hasInternalDisplay || hasKnownExternalDisplay
     }
 
     var clamshellSleepProtectionToggleValue: Bool {
@@ -226,6 +230,7 @@ final class BrightnessAppState: ObservableObject {
     }
 
     func runPrivacyModeOnce() {
+        guard canStartPrivacyMode else { return }
         if !hasExternalDisplay, hasInternalDisplay {
             dimInternalDisplaysOnce()
             return
@@ -271,6 +276,7 @@ final class BrightnessAppState: ObservableObject {
         guard !isClamshellSleepProtectionChanging else { return }
 
         if enabled {
+            guard canStartPrivacyMode else { return }
             enablePrivacyMode()
             return
         }

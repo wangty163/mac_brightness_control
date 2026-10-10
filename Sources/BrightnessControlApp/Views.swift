@@ -98,7 +98,7 @@ struct MenuBarPanelView: View {
         if appState.displays.isEmpty, appState.isRefreshing {
             EmptyStateView(title: "Loading displays", systemImage: "display", compact: true)
         } else if appState.displays.isEmpty {
-            EmptyStateView(title: "No displays", systemImage: "display.slash", compact: true)
+            EmptyStateView(title: "No displays", systemImage: "display", compact: true)
         } else {
             VStack(spacing: 8) {
                 ForEach(appState.displays) { display in
@@ -186,7 +186,7 @@ struct DetailWindowView: View {
             EmptyStateView(title: "Loading displays", systemImage: "display")
                 .frame(maxWidth: .infinity)
         } else if appState.displays.isEmpty {
-            EmptyStateView(title: "No displays", systemImage: "display.slash")
+            EmptyStateView(title: "No displays", systemImage: "display")
                 .frame(maxWidth: .infinity)
         } else {
             LazyVStack(alignment: .leading, spacing: 10) {
@@ -265,7 +265,9 @@ struct PrivacyModeToggleView: View {
                             ? (appState.externalPrivacyEnabled
                                 ? "Internal dimmed, external powered off"
                                 : "Internal display kept dimmed")
-                            : "Run once, or keep privacy active"
+                            : (appState.canStartPrivacyMode
+                                ? "Run once, or keep privacy active"
+                                : "No physical display available")
                     )
                         .font(compact ? .caption2 : .caption)
                         .foregroundStyle(.secondary)
@@ -291,6 +293,7 @@ struct PrivacyModeToggleView: View {
                 )
                 .disabled(
                     appState.privacyModeEnabled
+                        || !appState.canStartPrivacyMode
                         || appState.externalPrivacyEnabled
                         || appState.isPrivacyModeChanging
                         || appState.isClamshellSleepProtectionChanging
@@ -309,6 +312,7 @@ struct PrivacyModeToggleView: View {
                 .disabled(
                     appState.isPrivacyModeChanging
                         || appState.isClamshellSleepProtectionChanging
+                        || (!appState.privacyModeEnabled && !appState.canStartPrivacyMode)
                 )
             }
         }
@@ -678,6 +682,7 @@ private struct ErrorMessageView: View {
     var body: some View {
         PanelCard(compact: compact) {
             Label(message, systemImage: "exclamationmark.triangle.fill")
+                .help(message)
                 .font(compact ? .caption : .callout)
                 .foregroundStyle(.red)
                 .lineLimit(2)

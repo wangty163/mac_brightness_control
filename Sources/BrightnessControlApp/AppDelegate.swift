@@ -15,7 +15,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("BrightnessControlApp did finish launching")
-        NSApp.setActivationPolicy(.regular)
         appState = BrightnessAppState()
         configureMainMenu()
         configureMainWindow()
@@ -106,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow.center()
         mainWindow.isRestorable = false
         mainWindow.isReleasedWhenClosed = false
+        mainWindow.delegate = self
     }
 
     private func configureStatusItem() {
@@ -163,12 +163,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showMainWindow() {
         NSLog("BrightnessControlApp showing main window")
+        enterWindowMode()
         centerMainWindowOnCurrentScreen()
         mainWindow.makeKeyAndOrderFront(nil)
         mainWindow.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         appState.requestRefreshSoon()
         NSLog("BrightnessControlApp main window visible=%d ordered=%d", mainWindow.isVisible, mainWindow.isVisible)
+    }
+
+    private func enterWindowMode() {
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func exitWindowModeIfNeeded() {
+        // AppKit sends windowWillClose before removing the window from
+        // NSApp.windows. Re-evaluate on the next run-loop turn, and keep
+        // minimized management windows in regular application mode.
+        DispatchQueue.main.async {
+            let hasOpenWindow = NSApp.windows.contains { window in
+                Self.isManagementWindow(window) && (window.isVisible || window.isMiniaturized)
+            }
+            if !hasOpenWindow && NSApp.activationPolicy() != .accessory {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    private static func isManagementWindow(_ window: NSWindow) -> Bool {
+        !(window is NSPanel)
+            && window.styleMask.contains(.titled)
+            && window.canBecomeMain
     }
 
     private func configureAutomaticRefreshTriggers() {
@@ -237,6 +265,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return NSScreen.screens.first { screen in
             NSMouseInRect(mouseLocation, screen.frame, false)
         }
+    }
+}
+
+extension AppDelegate: NSWindowDelegate {
+    func windowDidBecomeMain(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              Self.isManagementWindow(window),
+              NSApp.activationPolicy() != .regular else { return }
+        NSApp.setActivationPolicy(.regular)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              Self.isManagementWindow(window) else { return }
+        exitWindowModeIfNeeded()
     }
 }
 

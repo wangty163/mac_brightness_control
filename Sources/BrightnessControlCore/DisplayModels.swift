@@ -135,6 +135,7 @@ public enum DisplayTarget: Equatable, Sendable {
 
 public enum BrightnessError: Error, LocalizedError, Equatable {
     case commandFailed(command: [String], exitCode: Int32, stderr: String)
+    case commandTerminated(command: [String], signal: Int32)
     case invalidOutput(String)
     case missingDisplayID(String)
     case missingExternalBackend
@@ -145,6 +146,8 @@ public enum BrightnessError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
+        case let .commandTerminated(command, signal):
+            return "\(command.first.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Display tool") terminated by signal \(signal). The display may be asleep or reconnecting; wake it manually before trying again."
         case let .commandFailed(command, exitCode, stderr):
             return "\(command.joined(separator: " ")) failed with \(exitCode): \(stderr)"
         case let .invalidOutput(message):

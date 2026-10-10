@@ -14,6 +14,13 @@ let package = Package(
         .executable(name: "BrightnessControlCoreTestRunner", targets: ["BrightnessControlCoreTestRunner"])
     ],
     targets: [
+        .executableTarget(
+            name: "BrightnessControlDDC",
+            path: "Vendor/m1ddc",
+            sources: ["sources"],
+            cSettings: [.headerSearchPath("headers"), .unsafeFlags(["-fmodules", "-fno-objc-arc"])],
+            linkerSettings: [.linkedFramework("CoreDisplay")]
+        ),
         .target(
             name: "DDCPower",
             publicHeadersPath: "include",

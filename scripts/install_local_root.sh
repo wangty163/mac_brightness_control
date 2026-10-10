@@ -94,6 +94,9 @@ trap cleanup EXIT
 /bin/mkdir -m 700 "$STAGING_ROOT"
 /usr/bin/ditto "$APP_SOURCE" "$STAGING_APP"
 /usr/sbin/chown -R root:wheel "$STAGING_APP"
+# Keep the installed application readable and traversable even when the source
+# was built under a restrictive umask. `X` preserves non-executable resources.
+/bin/chmod -R go+rX "$STAGING_APP"
 /bin/chmod -R go-w "$STAGING_APP"
 /usr/bin/codesign --verify --deep --strict "$STAGING_APP"
 

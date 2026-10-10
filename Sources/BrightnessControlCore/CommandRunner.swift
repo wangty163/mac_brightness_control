@@ -4,11 +4,13 @@ public struct CommandResult: Equatable, Sendable {
     public let exitCode: Int32
     public let stdout: String
     public let stderr: String
+    public let terminationSignal: Int32?
 
-    public init(exitCode: Int32, stdout: String, stderr: String) {
+    public init(exitCode: Int32, stdout: String, stderr: String, terminationSignal: Int32? = nil) {
         self.exitCode = exitCode
         self.stdout = stdout
         self.stderr = stderr
+        self.terminationSignal = terminationSignal
     }
 }
 
@@ -39,11 +41,17 @@ public final class ProcessCommandRunner: CommandRunning {
 
         let stdoutText = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let stderrText = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        return CommandResult(exitCode: process.terminationStatus, stdout: stdoutText, stderr: stderrText)
+        return CommandResult(
+            exitCode: process.terminationStatus, stdout: stdoutText, stderr: stderrText,
+            terminationSignal: process.terminationReason == .uncaughtSignal ? process.terminationStatus : nil
+        )
     }
 }
 
 func requireSuccessful(_ result: CommandResult, command: [String]) throws -> CommandResult {
+    if let signal = result.terminationSignal {
+        throw BrightnessError.commandTerminated(command: command, signal: signal)
+    }
     guard result.exitCode == 0 else {
         throw BrightnessError.commandFailed(
             command: command,

@@ -63,6 +63,64 @@ func testParsesGPUWithoutConnectedDisplays() throws {
     try expect(displays.isEmpty, "missing display list should mean no connected displays")
 }
 
+func testIgnoresVirtualDisplays() throws {
+    let json = """
+    {
+      "SPDisplaysDataType": [
+        {
+          "spdisplays_ndrvs": [
+            {
+              "_name": "spdisplays_display",
+              "_spdisplays_display-product-id": "76697274",
+              "_spdisplays_display-vendor-id": "756e6b6e",
+              "_spdisplays_displayID": "26",
+              "spdisplays_online": "spdisplays_yes"
+            }
+          ]
+        }
+      ]
+    }
+    """
+
+    let displays = try SystemProfilerParser.parseDisplays(from: json)
+    try expect(displays.isEmpty, "virtual displays should not be treated as DDC displays")
+
+    let powerController = RecordingExternalPowerController()
+    let manager = DisplayManager(
+        runner: RecordingCommandRunner(results: [
+            CommandResult(exitCode: 0, stdout: json, stderr: "")
+        ]),
+        externalPowerControllerProvider: { powerController }
+    )
+    try manager.disconnectExternalDisplays()
+    try expect(powerController.setCommands.isEmpty, "virtual-only setup must send no DDC command")
+}
+
+func testVirtualDisplayDoesNotShiftPhysicalDisplayIndex() throws {
+    let json = """
+    {"SPDisplaysDataType":[{"spdisplays_ndrvs":[
+      {"_name":"Virtual","_spdisplays_display-product-id":"76697274",
+       "_spdisplays_display-vendor-id":"756e6b6e","_spdisplays_displayID":"25"},
+      {"_name":"Physical","_spdisplays_displayID":"a"}
+    ]}]}
+    """
+    let displays = try SystemProfilerParser.parseDisplays(from: json)
+    try expect(displays.map(\.name) == ["Physical"], "retain the physical display")
+    try expect(displays.first?.displayID == 10, "preserve upstream hexadecimal ID parsing")
+    let powerController = RecordingExternalPowerController()
+    let manager = DisplayManager(
+        runner: RecordingCommandRunner(results: [
+            CommandResult(exitCode: 0, stdout: json, stderr: "")
+        ]),
+        externalPowerControllerProvider: { powerController }
+    )
+    try manager.disconnectExternalDisplays()
+    try expect(
+        powerController.setCommands == [ExternalPowerCommand(displayIndex: 1, mode: .off)],
+        "DDC index must count physical displays only"
+    )
+}
+
 func testParsesDisplayServicesBrightnessByDisplayID() throws {
     let text = """
         Display =             {
@@ -200,6 +258,31 @@ func testExternalPowerControllerFallsBackAfterM1DDCFailure() throws {
         fallback.setCommands == [ExternalPowerCommand(displayIndex: 1, mode: .off)],
         "fallback power command"
     )
+}
+
+func testCrashedPowerCommandIsNotReplayed() throws {
+    let runner = RecordingCommandRunner(results: [
+        CommandResult(exitCode: 11, stdout: "", stderr: "", terminationSignal: 11)
+    ])
+    let primary = M1DDCPowerController(path: "/test/ddc", runner: runner)
+    let fallback = RecordingExternalPowerController()
+    let controller = FallbackExternalPowerController(primary: primary, fallback: fallback)
+    do {
+        try controller.setPowerMode(displayIndex: 1, mode: .off)
+        throw TestFailure(description: "crash must not be reported as success")
+    } catch let error as BrightnessError {
+        guard case .commandTerminated(_, 11) = error else { throw error }
+    }
+    try expect(fallback.setCommands.isEmpty, "do not replay a power command after an ambiguous crash")
+    try expect(runner.commands.count == 1, "send power command only once")
+}
+
+func testProcessRunnerDistinguishesSignalFromExitStatus() throws {
+    let runner = ProcessCommandRunner()
+    let signalled = try runner.run(["/bin/sh", "-c", "kill -TERM $$"])
+    let exited = try runner.run(["/bin/sh", "-c", "exit 15"])
+    try expect(signalled.terminationSignal == 15, "retain actual termination signal")
+    try expect(exited.exitCode == 15 && exited.terminationSignal == nil, "normal exit is not a signal")
 }
 
 func testDDCCTLBackendParsesCurrentValueAndBuildsSetCommand() throws {
@@ -755,6 +838,8 @@ struct ExternalPowerCommand: Equatable {
 let tests: [(String, () throws -> Void)] = [
     ("parse system_profiler displays", testParsesInternalAndExternalDisplaysFromSystemProfilerJSON),
     ("parse system_profiler without displays", testParsesGPUWithoutConnectedDisplays),
+    ("parse system_profiler virtual display", testIgnoresVirtualDisplays),
+    ("virtual display preserves physical DDC index", testVirtualDisplayDoesNotShiftPhysicalDisplayIndex),
     ("parse corebrightnessdiag brightness", testParsesDisplayServicesBrightnessByDisplayID),
     ("m1ddc backend commands", testM1DDCBackendBuildsGetAndSetCommands),
     ("m1ddc input command", testM1DDCBackendBuildsInputCommand),
@@ -762,6 +847,8 @@ let tests: [(String, () throws -> Void)] = [
     ("m1ddc power command", testM1DDCPowerControllerBuildsStandbyCommand),
     ("external power factory m1ddc", testExternalPowerControllerFactoryPrefersM1DDC),
     ("external power fallback", testExternalPowerControllerFallsBackAfterM1DDCFailure),
+    ("crashed power command is not replayed", testCrashedPowerCommandIsNotReplayed),
+    ("process termination signals", testProcessRunnerDistinguishesSignalFromExitStatus),
     ("ddcctl backend commands", testDDCCTLBackendParsesCurrentValueAndBuildsSetCommand),
     ("display manager privacy enable", testDisplayManagerEnablesPrivacyModeCapturesAndForcesDisplays),
     ("display manager external power off", testDisplayManagerPowersOffExternalDisplaysDirectly),
